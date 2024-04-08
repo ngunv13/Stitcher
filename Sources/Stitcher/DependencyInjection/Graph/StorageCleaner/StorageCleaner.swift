@@ -6,29 +6,23 @@
 //
 
 import Foundation
-import Combine
 
-#if canImport(UIKit)
+#if canImport(UIKit) && canImport(Combine)
 import UIKit
+import Combine
 #endif
 
-#if canImport(AppKit)
+#if canImport(AppKit) && canImport(Combine)
 import AppKit
+import Combine
 #endif
 
 class StorageCleaner {
     
-#if DEBUG
-    @Atomic
-    static var cleaupRequestsCount = 0
-#endif
+    private var cleanupHandler: @Sendable () -> Void
+    private var subscriptions = Set<AnyPipelineCancellable>()
     
-    private static let didInstantiateDependencySubject = PassthroughSubject<Void, Never>()
-    
-    private var cleanupHandler: @Sendable () async -> Void
-    private var subscriptions = Set<AnyCancellable>()
-    
-    init(cleanupHandler: @Sendable @escaping () async -> Void) {
+    init(cleanupHandler: @Sendable @escaping () -> Void) {
         self.cleanupHandler = cleanupHandler
         
         postInit()
@@ -40,64 +34,44 @@ class StorageCleaner {
     }
     
     private func postInit() {
-#if canImport(UIKit)
-        NotificationCenter.default
-            .publisher(for: UIApplication.willResignActiveNotification)
-            .sink { [weak self] _ in
-                self?.cleanupStorage(priority: .userInitiated)
-            }
-            .store(in: &subscriptions)
-        
-        NotificationCenter.default
-            .publisher(for: UIApplication.didReceiveMemoryWarningNotification)
-            .sink { [weak self] _ in
-                self?.cleanupStorage(priority: .medium)
-            }
-            .store(in: &subscriptions)
+#if canImport(UIKit) && canImport(Combine)
+        if #available(iOS 13.0, macOS 10.15, macCatalyst 13.0, tvOS 13.0, watchOS 6.0, visionOS 1.0, *) {
+            NotificationCenter.default
+                .publisher(for: UIApplication.willResignActiveNotification)
+                .sink { [weak self] _ in
+                    self?.cleanupStorage(priority: .high)
+                }
+                .store(in: &subscriptions)
+            
+            NotificationCenter.default
+                .publisher(for: UIApplication.didReceiveMemoryWarningNotification)
+                .sink { [weak self] _ in
+                    self?.cleanupStorage(priority: .medium)
+                }
+                .store(in: &subscriptions)
+        }
 #endif
         
-#if canImport(AppKit)
-        NotificationCenter.default
-            .publisher(for: NSApplication.didResignActiveNotification)
-            .sink { [weak self] _ in
-                self?.cleanupStorage(priority: .userInitiated)
-            }
-            .store(in: &subscriptions)
+#if canImport(AppKit) && canImport(Combine)
+        if #available(iOS 13.0, macOS 10.15, macCatalyst 13.0, tvOS 13.0, watchOS 6.0, visionOS 1.0, *) {
+            NotificationCenter.default
+                .publisher(for: NSApplication.didResignActiveNotification)
+                .sink { [weak self] _ in
+                    self?.cleanupStorage(priority: .high)
+                }
+                .store(in: &subscriptions)
+        }
 #endif
+    }
+    
+    private func cleanupStorage(priority: AsyncTask.Priority = .low) {
         
-        let autoCleanupFrequency = StitcherConfiguration.autoCleanupFrequency
-        
-        guard autoCleanupFrequency != .never else {
+        guard StitcherConfiguration.autoCleanupEnabled else {
             return
         }
         
-        Self.didInstantiateDependencySubject
-            .debounce(for: 0.01, scheduler: DispatchQueue.global(qos: .utility))
-            .collect(autoCleanupFrequency.rawValue)
-            .sink { [weak self] _ in
-                self?.cleanupStorage(priority: .low)
-            }
-            .store(in: &subscriptions)
-    }
-    
-    private func cleanupStorage(priority: TaskPriority = .low) {
-#if DEBUG
-        Self.cleaupRequestsCount += 1
-#endif
-        
-        Task(priority: priority) {
-            await cleanupHandler()
+        AsyncTask(priority: priority) {
+            self.cleanupHandler()
         }
     }
-    
-    func didInstantiateDependency() {
-        Self.didInstantiateDependencySubject.send()
-    }
-    
-#if DEBUG
-    static func didInstantiateDependency() {
-        Self.didInstantiateDependencySubject.send()
-    }
-#endif
-    
 }

@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import Combine
 
 class ManagedSingletonInstanceStorage<Value: AnyObject>: InstanceStorage {
     
@@ -20,25 +19,25 @@ class ManagedSingletonInstanceStorage<Value: AnyObject>: InstanceStorage {
         _value_getter(_storedValue)
     }
     
-    private var subscription: AnyCancellable?
+    private var subscription: ManagedDependencyScopeReceipt?
     
-    init(key: Key, value: Value, tracking publisher: AnyPublisher<Void, Never>) {
+    init(key: Key, value: Value, tracking scope: ManagedDependencyScopeProviding) {
         self.key = key
         self._storedValue = value
         self._value_getter = { $0 }
         
-        self.subscription = publisher.sink { [weak self] in
+        self.subscription = scope.onScopeInvalidated { [weak self] in
             self?.clear()
         }
     }
     
     @_disfavoredOverload
-    init<V>(key: Key, value: V, tracking publisher: AnyPublisher<Void, Never>) where Value == Wrapper<V> {
+    init<V>(key: Key, value: V, tracking scope: ManagedDependencyScopeProviding) where Value == Reference<V> {
         self.key = key
-        self._storedValue = Wrapper(wrappedValue: value)
+        self._storedValue = Reference(wrappedValue: value)
         self._value_getter = { $0?.wrappedValue }
         
-        self.subscription = publisher.sink { [weak self] in
+        self.subscription = scope.onScopeInvalidated { [weak self] in
             self?.clear()
         }
     }

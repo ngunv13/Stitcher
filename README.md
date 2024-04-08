@@ -1,11 +1,13 @@
 # Stitcher
 
-Stitcher is a dependecy injection library for Swift projects.
+Stitcher is a dependency management and injection library for Swift projects.
 
 Contents:
+- [Stitcher](#stitcher)
   - [✔️ Minimum Requirements](#️-minimum-requirements)
   - [⏱ Version History](#-version-history)
   - [🧰 Features](#-features)
+  - [🧩 Extensions](#-extensions)
   - [📦 Installation](#-installation)
     - [Swift Package](#swift-package)
     - [Manually](#manually)
@@ -17,6 +19,7 @@ Contents:
         - [Register Dependencies By Type](#register-dependencies-by-type)
         - [Register Dependencies By Associated Value](#register-dependencies-by-associated-value)
         - [Dependency Scope](#dependency-scope)
+          - [Managed Dependency Scopes](#managed-dependency-scopes)
         - [Dependency Eagerness](#dependency-eagerness)
         - [Dependency Groups](#dependency-groups)
         - [Other Registration Representations](#other-registration-representations)
@@ -34,21 +37,25 @@ Contents:
       - [PostInstantiationAware Hook](#postinstantiationaware-hook)
       - [DependencyGraph Change Observations](#dependencygraph-change-observations)
       - [Configuration](#configuration)
-  - [🪲 Issues and Feature Requests](#-issues-and-feature-requests)
+  - [🐞 Issues and Feature Requests](#-issues-and-feature-requests)
 
 
 ## ✔️ Minimum Requirements
 
-Stitcher requires at least **iOS 13, macOS 10.15, tvOS 13** or **watchOS 6** and **Swift version 5.9**.
+Stitcher requires at least **Swift version 5.9**.
 
-The minimum OS versions may be dropped in a future release as the main dependency from these versions is `Combine`.
+Stitcher depends on `Foundation` and `Dispatch` so it is available in every platform that they are available, including non Apple platforms such as
+Linux and Windows. Please note, that WebAssembly is not currently supported.
+
+Any publicly exposed APIs that reference publishers use `Combine` in the platforms where it is available, or [OpenCombine](https://github.com/OpenCombine/OpenCombine/tree/master) in other platforms.
 
 ## ⏱ Version History
 
-| Version | Changes                           |
-|---------|-----------------------------------|
-| 0.9.1   | Pre-release.                      |
-| 1.0.0   | Initial release.                  |
+| Version | Changes                                                                                |
+|---------|----------------------------------------------------------------------------------------|
+| 0.9.1   | Pre-release.                                                                           |
+| 1.0.0   | Initial release.                                                                       |
+| 1.1.0   | Performance & stability improvements, relaxed minimum requirements and macro suppport. |
 
 ## 🧰 Features
 
@@ -57,8 +64,14 @@ The minimum OS versions may be dropped in a future release as the main dependenc
 - Composable dependency management support for modular projects.
 - Supports for injection by name, by type and by associated values.
 - Type safe initialization parameters for dependency initialization.
-- Support for indexing dependencies in order to minimize injection time.
+- Support for indexing dependencies in order to minimize injection time even with large number of dependencies.
 - Dynamic cyclic dependency detection at runtime.
+
+## 🧩 Extensions
+
+1. [StitcherMacros](https://github.com/athankefalas/StitcherMacros.git)
+   
+   A support package that defines meta programming utilities using Swift macros, enabling automatic parameter injection for functions and initializers as well as utilities for automatic dependency registration.
 
 ## 📦 Installation
 
@@ -363,7 +376,7 @@ The following four scopes are available:
 | Instance    | A different instance will be used every time is it injected. |
 | Shared      | The same instance of the dependency will be used every time is it injected, as long as there are strong references to it. |
 | Singleton   | The same instance of the dependency will be used every time is it injected. |
-| Managed     | The same instance of the dependency will be used every time is it injected, until the given publisher fires. |
+| Managed     | The same instance of the dependency will be used every time is it injected, until the given scope is manually invalidated. |
 
 By default, the scope of a dependency is automatically resolved, based on whether the type of the dependency is a value type or a reference
 type. The scope automatically selected for value types is `.instance`, while for reference types `.shared` is used. Furthermore, as value types
@@ -393,6 +406,66 @@ Dependency {
 }
 .scope(.managed(by: principalChangedPublisher))
 
+```
+
+###### Managed Dependency Scopes
+
+A managed dependency scope can be any class that conforms to the `ManagedDependencyScopeProviding` protocol. This protocol has a single requirement
+expressed as a function called `onScopeInvalidated`, that allows the custom type to register a callback that should be called by the scope when it is
+invalidated. This function returns a receipt type that conforms to the `ManagedDependencyScopeReceipt` protocol and can be used to cancel the
+observation. Additionally, Stitcher supports using a publisher directly as a managed scope, which will invalidate the scope of a dependency when the
+given publisher fires.
+
+```swift
+class PrincipalDatasource: ManagedDependencyScopeProviding {
+    
+    class Observation: ManagedDependencyScopeReceipt {
+        typealias Handler = () -> Void
+        
+        private(set) var callback: Handler?
+        
+        var isCancelled: Bool {
+            callback == nil
+        }
+        
+        init(callback: @escaping Handler) {
+            self.callback = callback
+        }
+        
+        func cancel() {
+            callback = nil
+        }
+    }
+    
+    private var observations: [Observation]
+    
+    var principal: UserAccount? {
+        didSet {
+            guard oldValue?.id != principal?.id else {
+                return
+            }
+            
+            principalChanged()
+        }
+    }
+    
+    init(principal: UserAccount?) {
+        self.principal = principal
+        self.observations = []
+    }
+    
+    private func principalChanged() {
+        observations.removeAll(where: { $0.isCancelled })
+        observations.forEach({ $0.callback?() })
+    }
+    
+    func onScopeInvalidated(perform action: @escaping () -> Void) -> any ManagedDependencyScopeReceipt {
+        let observation = Observation(callback: action)
+        observations.append(observation)
+        
+        return observation
+    }
+}
 ```
 
 ##### Dependency Eagerness
@@ -516,7 +589,7 @@ let container = DependencyContainer(merging: containers)
 
 ```
 
-Please note that the merged containers are strongly retained by the composite dependency cotnainer in order to correctly propagate observations.
+Please note that the merged containers are strongly retained by the composite dependency container in order to correctly propagate observations.
 
 ### Dependency Graph
 
@@ -536,7 +609,7 @@ multiple small containers that are activated independently of each other.
 #### Automatic Injection
 
 Automatic injection is performed by using the `@Injected` property wrapper. When using this property wrapper the dependency is injected lazily at the
-time when it was first requested which can be helpful for defining cyclic relationships between dependencies.
+time when it is first requested which can be helpful for defining cyclic relationships between dependencies.
 
 The injected property wrapper will attempt to inject the dependency, the first time it's wrapped value is requested. If the dependency cannot be found
 or it has a mismatching type it will cause a runtime precondition failure, which will print the file and line of the wrapped property that was
@@ -583,7 +656,7 @@ var repository: Repository
 ##### Inject By Type
 
 The default way to register and inject dependencies is by their type, or a supertype related by a protocol conformance or by inheritance.
-Other that using the dependency type directly a few common types are also supported:
+Other that using the dependency type directly, a few common types are also supported:
 
 1. Optional
    Injects a dependency that matches the `Wrapped` type, or nil if no such dependency is found.
@@ -728,6 +801,8 @@ Dependency cycle detected, Type[Root] -> Type[Leaf] -> Type[Root].
 ```
 
 The above error has the root type and all dependency instantiations performed in the same context so the cycle can be easily tracked and corrected.
+Please note that in order to improve injection performance, the runtime dependency cycle detection feature is conditionally enabled only in DEBUG
+builds by default.
 
 ### Interoperabilty
 
@@ -793,8 +868,9 @@ The behaviour of Stitcher can be configured using the properties defined in the 
 | - | - |
 | isIndexingEnabled | Controls whether indexing of dependency containers is active. An unindexed container may have slower performance when looking up dependencies |
 | approximateDependencyCount | An approximate count of the number of defined dependencies used to optimize memory allocations during indexing |
-| autoCleanupFrequency | The frequency with which the instance storage of the dependency graph releases unused or empty storage entries |
+| autoCleanupEnabled | Controls whether the instance storage of the dependency graph will be automatically cleaned when the app is minimized. |
+| runtimeCycleDetectionAvailability | Controls the availability of the runtime dependency cycle detection feature. |
 
-## 🪲 Issues and Feature Requests
+## 🐞 Issues and Feature Requests
 
-If you have a problem with the library or have a feature request make sure to open an issue.
+If you have a problem with the library, or have a feature request please make sure to open an issue.

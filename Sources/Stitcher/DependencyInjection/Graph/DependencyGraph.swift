@@ -6,30 +6,51 @@
 //
 
 import Foundation
-import Combine
 import OrderedCollections
+import OpenCombine
+
+#if canImport(Combine)
+import Combine
+#endif
 
 /// A type that contains all active `DependencyContainers` and can be used to inject dependencies.
 public enum DependencyGraph {
     
     @Atomic
-    private static var activeContainers: OrderedDictionary<AnyHashable, IndexedDependencyContainer> = [:]
+    private static var initialized = false
+    
+    @Atomic
+    private static var activeContainers: OrderedDictionary<DependencyContainer.ID, IndexedDependencyContainer> = [:]
     
     @Atomic
     private static var instanceStorage: [InstanceStorageKey : AnyInstanceStorage] = [:]
     
     @Atomic
-    private static var subscriptions: [AnyHashable : AnyCancellable] = [:]
+    private static var subscriptions: [DependencyContainer.ID : AnyPipelineCancellable] = [:]
     
-    private static let graphChangedSubject = PassthroughSubject<Void, Never>()
+    private static let graphChangedSubject = PipelineSubject<Void>()
     
-    /// A publisher that fires when the dependeny graph changes
-    public static var graphChangedPublisher: AnyPublisher<Void, Never> {
-        graphChangedSubject.eraseToAnyPublisher()
+    static var graphChangedPipeline: AnyPipeline<Void> {
+        graphChangedSubject.erasedToAnyPipeline()
     }
+    
+    static let instantionNotificationCenter = InstantionNotificationCenter()
     
     private static let storageCleaner = StorageCleaner {
         releaseUnusedStorage()
+    }
+    
+    private static func prewarm() {
+        let initialized = _initialized.lock()
+        
+        guard !initialized else {
+            _initialized.unlock()
+            return
+        }
+        
+        _ = instantionNotificationCenter
+        _ = storageCleaner
+        _initialized.unlock(with: true)
     }
     
     // MARK: DependencyContainer Activation - Deactivation
@@ -37,34 +58,18 @@ public enum DependencyGraph {
     /// Activates the given dependency container
     /// - Parameter container: The dependency container to activate
     public static func activate(
-        _ container: DependencyContainer
+        _ container: DependencyContainer,
+        completion: @escaping () -> Void = {}
     ) {
+        prewarm()
         
         let id = container.id
-        subscriptions[id] = container.dependenciesRegistrarChangesPublisher
-            .sink { changes in
-                dependencyContainer(
-                    id: id,
-                    changedWith: changes
-                )
-            }
-        
         activeContainers[id] = IndexedDependencyContainer(
             container: container,
-            lazyInitializationHandler: initializeLazyDependency(registration:)
+            lazyInitializationHandler: initializeLazyDependency(registration:),
+            completion: completion
         )
         
-        graphChangedSubject.send()
-        storageCleaner.didInstantiateDependency()
-    }
-    
-    /// Activates the given dependency container
-    /// - Parameter container: The dependency container to activate
-    public static func activate(
-        _ container: DependencyContainer
-    ) async {
-        
-        let id = container.id
         subscriptions[id] = container.dependenciesRegistrarChangesPublisher
             .sink { changes in
                 dependencyContainer(
@@ -73,13 +78,7 @@ public enum DependencyGraph {
                 )
             }
         
-        activeContainers[id] = await IndexedDependencyContainer(
-            container: container,
-            lazyInitializationHandler: initializeLazyDependency(registration:)
-        )
-        
         graphChangedSubject.send()
-        storageCleaner.didInstantiateDependency()
     }
     
     /// Deactivates the given dependency container
@@ -118,7 +117,7 @@ public enum DependencyGraph {
     }
     
     public static func releaseUnusedStorage() {
-        Task {
+        AsyncTask {
             let keys = Set(instanceStorage.keys)
             
             for key in keys {
@@ -178,13 +177,24 @@ public enum DependencyGraph {
     }
     
     static func dependencyRegistrations(
-        matching locator: DependencyLocator.MatchProposal
+        matching locator: DependencyLocator.MatchProposal,
+        parameters: DependencyParameters
     ) -> OrderedSet<RawDependencyRegistration> {
+        var registrations = OrderedSet<RawDependencyRegistration>(
+            minimumCapacity: activeContainers.count
+        )
         
-        let matchingRegistrations = activeContainers.values
-            .flatMap({ $0.dependecyRegistrations(matching: locator) })
+        for container in activeContainers.values {
+            for registration in container.dependecyRegistrations(matching: locator) {
+                guard registration.factory.parameters.isSatisfied(by: parameters) else {
+                    continue
+                }
+                
+                registrations.append(registration)
+            }
+        }
         
-        return OrderedSet(matchingRegistrations)
+        return registrations
     }
     
     @discardableResult
@@ -202,13 +212,15 @@ public enum DependencyGraph {
             return existingInstance
         }
         
-        defer {
-            storageCleaner.didInstantiateDependency()
-        }
-        
         do {
-            let instance = try withCycleDetection(registration.locator) {
-                try registration.factory.makeInstance(parameters)
+            let instance: Any
+            
+            if StitcherConfiguration.runtimeCycleDetectionAvailability.isEnabled {
+                instance = try withCycleDetection(registration.locator) {
+                    try registration.factory.makeInstance(parameters)
+                }
+            } else {
+                instance = try registration.factory.makeInstance(parameters)
             }
             
             let instanceStorage = registration.factory.makeInstanceStorage(
@@ -270,3 +282,68 @@ public enum DependencyGraph {
         return typedDependency
     }
 }
+
+// MARK: DependencyGraph + Combine
+
+public extension DependencyGraph {
+    
+#if canImport(Combine)
+    
+    /// A publisher that fires when the dependeny graph changes
+    @available(iOS 13.0, macOS 10.15, macCatalyst 13.0, tvOS 13.0, watchOS 6.0, visionOS 1.0, *)
+    static var graphChangedPublisher: Combine.AnyPublisher<Void, Never> {
+        guard let provider = graphChangedPipeline.erasedProvider as? Combine.AnyPublisher<Void, Never> else {
+            return Empty().eraseToAnyPublisher()
+        }
+        
+        return provider
+    }
+    
+
+#else
+    
+    /// A publisher that fires when the dependeny graph changes
+    static var graphChangedPublisher: OpenCombine.AnyPublisher<Void, Never> {
+        guard let provider = graphChangedPipeline.erasedProvider as? OpenCombine.AnyPublisher<Void, Never> else {
+            return Empty().eraseToAnyPublisher()
+        }
+        
+        return provider
+    }
+    
+#endif
+}
+
+// MARK: DependencyGraph + Async
+
+@available(iOS 13.0, macOS 10.15, macCatalyst 13.0, tvOS 13.0, watchOS 6.0, visionOS 1.0, *)
+public extension DependencyGraph {
+    
+    /// Activates the given dependency container and waits for indexing to complete.
+    /// - Parameter container: The dependency container to activate
+    static func activate(
+        _ container: DependencyContainer
+    ) async {
+        
+        await withUnsafeContinuation { continuation in
+            let id = container.id
+            subscriptions[id] = container.dependenciesRegistrarChangesPublisher
+                .sink { changes in
+                    dependencyContainer(
+                        id: id,
+                        changedWith: changes
+                    )
+                }
+            
+            activeContainers[id] = IndexedDependencyContainer(
+                container: container,
+                lazyInitializationHandler: initializeLazyDependency(registration:),
+                completion: {
+                    graphChangedSubject.send()                    
+                    continuation.resume()
+                }
+            )
+        }
+    }
+}
+
