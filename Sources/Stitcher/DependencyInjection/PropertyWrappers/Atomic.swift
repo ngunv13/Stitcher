@@ -8,12 +8,12 @@
 import Foundation
 
 @propertyWrapper
-final class Atomic<Value> {
+public final class Atomic<Value> {
     
     private var value: Value
     private let semaphore = DispatchSemaphore(value: 1)
     
-    var wrappedValue: Value {
+    public var wrappedValue: Value {
         get {
             semaphore.wait()
             
@@ -35,11 +35,26 @@ final class Atomic<Value> {
         }
     }
     
-    init(wrappedValue value: Value) {
+    public init(wrappedValue value: Value) {
         self.value = value
     }
     
-    init(initialValue value: Value) {
+    public init(initialValue value: Value) {
         self.value = value
+    }
+    
+    @discardableResult
+    public func lock() -> Value {
+        semaphore.wait()
+        return value
+    }
+    
+    public func unlock() {
+        semaphore.signal()
+    }
+    
+    public func unlock(with value: Value) {
+        self.value = value
+        semaphore.signal()
     }
 }

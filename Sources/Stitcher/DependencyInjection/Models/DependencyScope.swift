@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import Combine
 
 /// The scope or lifetime of a dependency instance.
 public enum DependencyScope: Hashable {
@@ -20,8 +19,8 @@ public enum DependencyScope: Hashable {
     /// A singleton instance of the dependency will be created, and used throughout the lifetime of the application.
     case singleton
     
-    /// A singleton instance of the dependency will be created, and used until the given publisher fires.
-    case managed(AnyPublisher<Void, Never>)
+    /// A singleton instance of the dependency will be created, and used until the given managed scope representation is invalidated.
+    case managed(ManagedDependencyScopeProviding)
     
     private var caseIdentifier: Int {
         switch self {
@@ -36,10 +35,10 @@ public enum DependencyScope: Hashable {
         }
     }
     
-    var invalidationPublisher: AnyPublisher<Void, Never>? {
+    var managedScope: ManagedDependencyScopeProviding? {
         switch self {
-        case .managed(let publisher):
-            return publisher
+        case .managed(let scope):
+            return scope
         default:
             return nil
         }
@@ -56,19 +55,51 @@ public enum DependencyScope: Hashable {
         return (type is AnyObject.Type) ? .shared : .instance
     }
     
-    @_disfavoredOverload
-    public static func managed<P: Publisher>(
+    public static func == (lhs: DependencyScope, rhs: DependencyScope) -> Bool {
+        lhs.hashValue == rhs.hashValue
+    }
+}
+
+#if canImport(Combine)
+import Combine
+#endif
+
+import OpenCombine
+
+public extension DependencyScope {
+ 
+#if canImport(Combine)
+    @available(iOS 13.0, macOS 10.15, macCatalyst 13.0, tvOS 13.0, watchOS 6.0, visionOS 1.0, *)
+    static func managed<P: Combine.Publisher>(
         by publisher: P
     ) -> Self
     where P.Failure == Never {
         return .managed(
-            publisher
-                .map({_ in () })
-                .eraseToAnyPublisher()
+            PipelineManagedDependencyScope(
+                pipeline: publisher
+                    .map({_ in () })
+                    .erasedToAnyPipeline()
+            )
+        )
+    }
+
+#endif
+
+#if canImport(OpenCombine)
+    
+    static func managed<P: OpenCombine.Publisher>(
+        by publisher: P
+    ) -> Self
+    where P.Failure == Never {
+        return .managed(
+            PipelineManagedDependencyScope(
+                pipeline: publisher
+                    .map({_ in () })
+                    .erasedToAnyPipeline()
+            )
         )
     }
     
-    public static func == (lhs: DependencyScope, rhs: DependencyScope) -> Bool {
-        lhs.hashValue == rhs.hashValue
-    }
+    
+#endif
 }
