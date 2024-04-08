@@ -57,6 +57,7 @@ Any publicly exposed APIs that reference publishers use `Combine` in the platfor
 | 1.0.0   | Initial release.                                                                       |
 | 1.1.0   | Performance & stability improvements, relaxed minimum requirements and macro suppport. |
 
+
 ## 🧰 Features
 
 - Easy and fast setup.
