@@ -1,7 +1,7 @@
 # Stitcher
 
 <!-- # Badges -->
-[![License](https://img.shields.io/github/license/athankefalas/Stitcher)](https://github.com/athankefalas/Stitcher/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/athankefalas/Stitcher)](https://github.com/athankefalas/Stitcher/LICENSE)
 [![Release](https://img.shields.io/github/v/release/athankefalas/Stitcher)](https://github.com/athankefalas/Stitcher/releases/tag/v1.1.0)
 
 Stitcher is a dependency management and injection library for Swift projects.
