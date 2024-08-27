@@ -62,7 +62,7 @@ public struct DependencyLocator: Hashable {
     }
     
     private let kind: Kind
-    private let signature: AnyHashable
+    let signature: AnyHashable
     private let indexingkeys: Set<IndexingKey>
     
     private init(

@@ -83,6 +83,7 @@ public final class DependencyContainer: Identifiable, Equatable {
     @Atomic
     private var dependenciesRegistrar: DependenciesRegistrar
     private var dependenciesRegistrarProvider: () -> DependenciesRegistrar
+    private var mockRegistrar: (() -> DependenciesRegistrar)?
     private let invalidateDependenciesSubject = PipelineSubject<Void>()
     
     private let dependenciesRegistrarChangesSubject = PipelineSubject<ChangeSet>()
@@ -195,9 +196,30 @@ public final class DependencyContainer: Identifiable, Equatable {
         
         return self
     }
+  
+    func mock(@DependencyRegistrarBuilder _ mocks: @escaping () -> DependenciesRegistrar) {
+        mockRegistrar = mocks
+        invalidateDependenciesRegistrar()
+    }
     
     private func invalidateDependenciesRegistrar(publishChanges: Bool = true) {
-        let newValue = dependenciesRegistrarProvider()
+        var newValue = dependenciesRegistrarProvider()
+        if let mockRegistrar = mockRegistrar?() {
+          print(newValue.map { $0.factory.type})
+            newValue = newValue.filter { item in
+                !mockRegistrar.contains { mock in
+                    if let mockSigs = mock.locator.signature as? [TypeName],
+                       let itemSigs = item.locator.signature as? [TypeName] {
+                        let mockCanons = mockSigs.map { $0.canonicalValue }
+                        let itemCanons = itemSigs.map { $0.canonicalValue }
+                        return !mockCanons.filter { itemCanons.contains($0) }.isEmpty
+                    } else {
+                        return false
+                    }
+                }
+            }
+            newValue.formUnion(mockRegistrar)
+        }
         let oldValue = dependenciesRegistrar
         self.dependenciesRegistrar = newValue
                 

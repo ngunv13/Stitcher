@@ -166,7 +166,7 @@ final class IndexedDependencyContainer {
         }
         
         self.indexingTask = configuration.indexer.index(
-            dependencies: changes.insertedDependencies,
+            dependencies: changes.insertedDependencies.union(changes.updatedDependencies),
             coordinator: coordinator
         ) { [weak self] registrationIndex in
             self?.registrationIndex = registrationIndex
