@@ -205,7 +205,6 @@ public final class DependencyContainer: Identifiable, Equatable {
     private func invalidateDependenciesRegistrar(publishChanges: Bool = true) {
         var newValue = dependenciesRegistrarProvider()
         if let mockRegistrar = mockRegistrar?() {
-          print(newValue.map { $0.factory.type})
             newValue = newValue.filter { item in
                 !mockRegistrar.contains { mock in
                     if let mockSigs = mock.locator.signature as? [TypeName],
