@@ -52,7 +52,7 @@ class StorageCleaner {
         }
 #endif
         
-#if canImport(AppKit) && canImport(Combine)
+#if canImport(AppKit) && canImport(Combine) && !targetEnvironment(macCatalyst)
         if #available(iOS 13.0, macOS 10.15, macCatalyst 13.0, tvOS 13.0, watchOS 6.0, visionOS 1.0, *) {
             NotificationCenter.default
                 .publisher(for: NSApplication.didResignActiveNotification)

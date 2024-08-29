@@ -197,7 +197,7 @@ public final class DependencyContainer: Identifiable, Equatable {
         return self
     }
   
-    func mock(@DependencyRegistrarBuilder _ mocks: @escaping () -> DependenciesRegistrar) {
+    public func mock(@DependencyRegistrarBuilder _ mocks: @escaping () -> DependenciesRegistrar) {
         mockRegistrar = mocks
         invalidateDependenciesRegistrar()
     }
