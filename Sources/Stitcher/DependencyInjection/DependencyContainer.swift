@@ -201,6 +201,11 @@ public final class DependencyContainer: Identifiable, Equatable {
         mockRegistrar = mocks
         invalidateDependenciesRegistrar()
     }
+  
+    public func mockActivate(@DependencyRegistrarBuilder _ mocks: @escaping () -> DependenciesRegistrar) async {
+        mock(mocks)
+        await DependencyGraph.activate(self)
+    }
     
     private func invalidateDependenciesRegistrar(publishChanges: Bool = true) {
         var newValue = dependenciesRegistrarProvider()
