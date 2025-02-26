@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import OpenCombine
 
 #if canImport(Combine)
 import Combine
@@ -29,22 +28,13 @@ final class AnyPipelineCancellable: Hashable {
         _cancel = {}
     }
     
-    #if canImport(Combine)
-    
     @available(iOS 13.0, macOS 10.15, macCatalyst 13.0, tvOS 13.0, watchOS 6.0, visionOS 1.0, *)
     init(_ cancellable: Combine.AnyCancellable) {
         self.providerHashcode = cancellable.hashValue
         self.providerCancellable = cancellable
         self._cancel = { cancellable.cancel() }
     }
-    
-    #endif
-    
-    init(_ cancellable: OpenCombine.AnyCancellable) {
-        self.providerHashcode = cancellable.hashValue
-        self.providerCancellable = cancellable
-        self._cancel = { cancellable.cancel() }
-    }
+  
     
     deinit {
         cancel()

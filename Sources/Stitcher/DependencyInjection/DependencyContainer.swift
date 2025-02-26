@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import OpenCombine
 
 #if canImport(Combine)
 import Combine
@@ -280,8 +279,6 @@ public extension DependencyContainer {
 
 public extension DependencyContainer {
     
-#if canImport(Combine)
-    
     /// Modifies this container so that it dependency registrations provider closure will be invalidated when the given publisher fires.
     /// - Parameter publisher: A publisher that notifies this dependency container that it's dependency registrations have been invalidated.
     /// - Returns: This dependency container instance with an added invalidation observation.
@@ -308,35 +305,4 @@ public extension DependencyContainer {
             tracking: object.objectWillChange
         )
     }
-    
-#endif
-    
-#if canImport(OpenCombine)
-    
-    /// Modifies this container so that it dependency registrations provider closure will be invalidated when the given publisher fires.
-    /// - Parameter publisher: A publisher that notifies this dependency container that it's dependency registrations have been invalidated.
-    /// - Returns: This dependency container instance with an added invalidation observation.
-    func invalidated<SomePublisher: OpenCombine.Publisher>(
-        tracking publisher: SomePublisher
-    ) -> DependencyContainer
-    where SomePublisher.Failure == Never {
-        
-        return invalidated(
-            tracking: publisher.erasedToAnyPipeline()
-        )
-    }
-   
-
-    /// Modifies this container so that it dependency registrations provider closure will be invalidated when the given object changes.
-    /// - Parameter object: The observable object to track
-    /// - Returns: This dependency container instance with an added invalidation observation.
-    func invalidated<SomeObject: OpenCombine.ObservableObject>(
-        tracking object: SomeObject
-    ) -> DependencyContainer {
-        return self.invalidated(
-            tracking: object.objectWillChange
-        )
-    }
-    
-#endif
 }

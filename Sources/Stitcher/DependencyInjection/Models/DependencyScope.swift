@@ -64,11 +64,8 @@ public enum DependencyScope: Hashable {
 import Combine
 #endif
 
-import OpenCombine
-
 public extension DependencyScope {
  
-#if canImport(Combine)
     @available(iOS 13.0, macOS 10.15, macCatalyst 13.0, tvOS 13.0, watchOS 6.0, visionOS 1.0, *)
     static func managed<P: Combine.Publisher>(
         by publisher: P
@@ -82,24 +79,4 @@ public extension DependencyScope {
             )
         )
     }
-
-#endif
-
-#if canImport(OpenCombine)
-    
-    static func managed<P: OpenCombine.Publisher>(
-        by publisher: P
-    ) -> Self
-    where P.Failure == Never {
-        return .managed(
-            PipelineManagedDependencyScope(
-                pipeline: publisher
-                    .map({_ in () })
-                    .erasedToAnyPipeline()
-            )
-        )
-    }
-    
-    
-#endif
 }

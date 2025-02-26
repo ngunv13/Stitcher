@@ -7,7 +7,6 @@
 
 import Foundation
 import OrderedCollections
-import OpenCombine
 
 #if canImport(Combine)
 import Combine
@@ -287,8 +286,6 @@ public enum DependencyGraph {
 
 public extension DependencyGraph {
     
-#if canImport(Combine)
-    
     /// A publisher that fires when the dependeny graph changes
     @available(iOS 13.0, macOS 10.15, macCatalyst 13.0, tvOS 13.0, watchOS 6.0, visionOS 1.0, *)
     static var graphChangedPublisher: Combine.AnyPublisher<Void, Never> {
@@ -298,20 +295,6 @@ public extension DependencyGraph {
         
         return provider
     }
-    
-
-#else
-    
-    /// A publisher that fires when the dependeny graph changes
-    static var graphChangedPublisher: OpenCombine.AnyPublisher<Void, Never> {
-        guard let provider = graphChangedPipeline.erasedProvider as? OpenCombine.AnyPublisher<Void, Never> else {
-            return Empty().eraseToAnyPublisher()
-        }
-        
-        return provider
-    }
-    
-#endif
 }
 
 // MARK: DependencyGraph + Async

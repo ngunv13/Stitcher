@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import OpenCombine
 
 /// A receipt for a managed scope invalidation observation.
 public protocol ManagedDependencyScopeReceipt {
@@ -16,12 +15,8 @@ public protocol ManagedDependencyScopeReceipt {
 }
 
 extension AnyPipelineCancellable: ManagedDependencyScopeReceipt {}
-extension OpenCombine.AnyCancellable: ManagedDependencyScopeReceipt {}
 
-#if canImport(Combine)
 import Combine
 
 @available(iOS 13.0, macOS 10.15, macCatalyst 13.0, tvOS 13.0, watchOS 6.0, visionOS 1.0, *)
 extension Combine.AnyCancellable: ManagedDependencyScopeReceipt {}
-
-#endif
